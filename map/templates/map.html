@@ -1,0 +1,49 @@
+<!-- map/templates/map.html -->
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Polaris Routing</title>
+  </head>
+  <body>
+    <h1>Route Details</h1>
+    <div id="route-info"></div>
+
+    <!-- map/templates/map.html -->
+    <script>
+      fetch(
+        "/api/map/route/?start_lat=48.13743&start_lng=11.57549&end_lat=48.23424&end_lng=11.58911&vehicle=car"
+      )
+        .then((response) => response.json())
+        .then((data) => {
+          const container = document.getElementById("route-info");
+
+          if (data.error) {
+            container.innerHTML = `<p>Error: ${data.error}</p>`;
+            return;
+          }
+
+          container.innerHTML = `
+                <h2>Route Details</h2>
+                <p>Total Distance: ${(data.distance / 1000).toFixed(1)} km</p>
+                <p>Estimated Time: ${Math.floor(
+                  data.time / 3600000
+                )}h ${Math.floor((data.time % 3600000) / 60000)}m</p>
+                <h3>Instructions:</h3>
+                <ol>
+                    ${data.instructions
+                      .map(
+                        (i) => `
+                        <li>
+                            ${i.text} 
+                            (${(i.distance / 1000).toFixed(1)} km, 
+                            ${Math.floor(i.time / 60000)}m)
+                        </li>
+                    `
+                      )
+                      .join("")}
+                </ol>
+            `;
+        });
+    </script>
+  </body>
+</html>
