@@ -1,48 +1,179 @@
-<!-- map/templates/map.html -->
 <!DOCTYPE html>
 <html>
   <head>
     <title>Polaris Routing</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+      }
+      .route-form {
+        margin-bottom: 20px;
+      }
+      .route-form input {
+        padding: 8px;
+        margin-right: 10px;
+        width: 200px;
+      }
+      .route-form button {
+        padding: 8px 16px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        cursor: pointer;
+      }
+      .route-form button:hover {
+        background-color: #0056b3;
+      }
+      #map {
+        height: 500px;
+        margin-top: 20px;
+        border: 1px solid #ddd;
+      }
+      .results {
+        margin-top: 20px;
+        padding: 20px;
+        background-color: #f9f9f9;
+        border: 1px solid #ddd;
+      }
+      .error {
+        color: red;
+      }
+    </style>
+    <!-- Leaflet CSS and JS -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   </head>
   <body>
-    <h1>Route Details</h1>
-    <div id="route-info"></div>
+    <h1>Polaris Routing</h1>
+    <div class="route-form">
+      <h2>Find Your Route</h2>
+      <form id="routeForm">
+        <div>
+          <label for="start">Start Location:</label>
+          <input
+            type="text"
+            id="start"
+            name="start"
+            placeholder="Enter start location"
+            required
+          />
+        </div>
+        <div>
+          <label for="end">Destination:</label>
+          <input
+            type="text"
+            id="end"
+            name="end"
+            placeholder="Enter destination"
+            required
+          />
+        </div>
+        <button type="submit">Get Route</button>
+      </form>
+    </div>
 
-    <!-- map/templates/map.html -->
+    <!-- Map Container -->
+    <div id="map"></div>
+
+    <!-- Route Results -->
+    <div class="results" id="routeResults">
+      <!-- Route details will be displayed here -->
+    </div>
+
     <script>
-      fetch(
-        "/api/map/route/?start_lat=48.13743&start_lng=11.57549&end_lat=48.23424&end_lng=11.58911&vehicle=car"
-      )
-        .then((response) => response.json())
-        .then((data) => {
-          const container = document.getElementById("route-info");
+      // Initialize the map
+      const map = L.map("map").setView([20.5937, 78.9629], 5); // Default center: India
 
-          if (data.error) {
-            container.innerHTML = `<p>Error: ${data.error}</p>`;
-            return;
-          }
+      // Add OpenStreetMap tiles
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap contributors",
+      }).addTo(map);
 
-          container.innerHTML = `
-                <h2>Route Details</h2>
-                <p>Total Distance: ${(data.distance / 1000).toFixed(1)} km</p>
-                <p>Estimated Time: ${Math.floor(
-                  data.time / 3600000
-                )}h ${Math.floor((data.time % 3600000) / 60000)}m</p>
-                <h3>Instructions:</h3>
-                <ol>
-                    ${data.instructions
-                      .map(
-                        (i) => `
-                        <li>
-                            ${i.text} 
-                            (${(i.distance / 1000).toFixed(1)} km, 
-                            ${Math.floor(i.time / 60000)}m)
-                        </li>
-                    `
-                      )
-                      .join("")}
-                </ol>
-            `;
+      // Function to draw the route on the map
+      function drawRoute(route) {
+        // Clear previous route (if any)
+        if (window.routeLayer) {
+          map.removeLayer(window.routeLayer);
+        }
+
+        // Convert route points to LatLng objects
+        const routePoints = route.points.coordinates.map((coord) =>
+          L.latLng(coord[1], coord[0])
+        );
+
+        // Draw the route on the map
+        window.routeLayer = L.polyline(routePoints, { color: "blue" }).addTo(
+          map
+        );
+
+        // Fit the map to the route bounds
+        map.fitBounds(window.routeLayer.getBounds());
+      }
+
+      // Handle form submission
+      document
+        .getElementById("routeForm")
+        .addEventListener("submit", function (e) {
+          e.preventDefault(); // Prevent form submission
+
+          // Get user inputs
+          const start = document.getElementById("start").value;
+          const end = document.getElementById("end").value;
+
+          // Fetch route data from Django backend
+          fetch(
+            `/api/map/route/?start=${encodeURIComponent(
+              start
+            )}&end=${encodeURIComponent(end)}`
+          )
+            .then((response) => response.json())
+            .then((data) => {
+              const resultsDiv = document.getElementById("routeResults");
+              resultsDiv.innerHTML = ""; // Clear previous results
+
+              if (data.error) {
+                // Display error message
+                resultsDiv.innerHTML = `<p class="error">Error: ${data.error}</p>`;
+                return;
+              }
+
+              // Display route details
+              resultsDiv.innerHTML = `
+                        <h3>Route Details</h3>
+                        <p><strong>From:</strong> ${data.start_address}</p>
+                        <p><strong>To:</strong> ${data.end_address}</p>
+                        <p><strong>Distance:</strong> ${(
+                          data.distance / 1000
+                        ).toFixed(1)} km</p>
+                        <p><strong>Estimated Time:</strong> ${Math.floor(
+                          data.time / 3600
+                        )}h ${Math.floor((data.time % 3600) / 60)}m</p>
+                        <h4>Instructions:</h4>
+                        <ol>
+                            ${data.instructions
+                              .map(
+                                (i) => `
+                                <li>${i.text} (${(i.distance / 1000).toFixed(
+                                  1
+                                )} km)</li>
+                            `
+                              )
+                              .join("")}
+                        </ol>
+                    `;
+
+              // Draw the route on the map
+              drawRoute(data.paths[0]);
+            })
+            .catch((error) => {
+              // Handle fetch errors
+              const resultsDiv = document.getElementById("routeResults");
+              resultsDiv.innerHTML = `<p class="error">Failed to fetch route: ${error.message}</p>`;
+            });
         });
     </script>
   </body>
