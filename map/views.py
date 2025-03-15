@@ -13,6 +13,7 @@ class RouteView(View):
         # Get parameters from request
         start = request.GET.get('start', '')
         end = request.GET.get('end', '')
+        vehicle = request.GET.get('vehicle', 'car')  # Default to car
         
         if not start or not end:
             return JsonResponse({"error": "Both start and end locations are required"}, status=400)
@@ -32,26 +33,21 @@ class RouteView(View):
                 start_geocode['lat'],
                 start_geocode['lon'],
                 end_geocode['lat'],
-                end_geocode['lon']
+                end_geocode['lon'],
+                vehicle
             )
             
             if 'error' in route_data:
                 return JsonResponse({"error": route_data['error']}, status=400)
                 
             # Process successful response
-            main_path = route_data['paths'][0]
             return JsonResponse({
                 "start_address": start_geocode.get('display_name', start),
                 "end_address": end_geocode.get('display_name', end),
-                "distance": main_path.get('distance', 0),
-                "time": main_path.get('time', 0),
-                "instructions": [
-                    {
-                        "text": instr.get('text', ''),
-                        "distance": instr.get('distance', 0)
-                    } for instr in main_path.get('instructions', [])
-                ],
-                "paths": [main_path]  # Include route geometry for the map
+                "distance": route_data.get('distance', 0),
+                "time": route_data.get('time', 0),
+                "instructions": route_data.get('instructions', []),
+                "paths": route_data.get('paths', []),
             })
             
         except Exception as e:

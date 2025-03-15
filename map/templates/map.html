@@ -72,6 +72,15 @@
             required
           />
         </div>
+        <!-- Add the new dropdown here -->
+        <div>
+          <label for="vehicle">Mode of Transport:</label>
+          <select id="vehicle" name="vehicle">
+            <option value="car">Car</option>
+            <option value="metro">Metro</option>
+            <option value="bike">Bike</option>
+          </select>
+        </div>
         <button type="submit">Get Route</button>
       </form>
     </div>
@@ -123,12 +132,15 @@
           // Get user inputs
           const start = document.getElementById("start").value;
           const end = document.getElementById("end").value;
+          const vehicle = document.getElementById("vehicle").value; // Get selected vehicle type
 
           // Fetch route data from Django backend
           fetch(
             `/api/map/route/?start=${encodeURIComponent(
               start
-            )}&end=${encodeURIComponent(end)}`
+            )}&end=${encodeURIComponent(end)}&vehicle=${encodeURIComponent(
+              vehicle
+            )}`
           )
             .then((response) => response.json())
             .then((data) => {
