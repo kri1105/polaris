@@ -1,4 +1,5 @@
 from pathlib import Path
+import psycopg2
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -59,11 +60,14 @@ WSGI_APPLICATION = 'polaris.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',  # Use PostgreSQL backend
+        'NAME': 'postgres',              # Name of your PostgreSQL database
+        'USER': 'postgres',              # PostgreSQL username
+        'PASSWORD': 'krithi',      # PostgreSQL password
+        'HOST': 'localhost',                       # Database host (use 'localhost' for local development)
+        'PORT': '5432',                            # Default PostgreSQL port
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators

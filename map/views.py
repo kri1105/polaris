@@ -1,11 +1,38 @@
 from django.http import JsonResponse
 from django.views import View
-from .services import geocode_location, get_graphhopper_route
+from django.views.decorators.http import require_GET
+from .services import geocode_location, get_combined_route, get_car_route
 
 from django.shortcuts import render
 
 def map_view(request):
     return render(request, 'map.html')
+
+
+@require_GET
+def get_route(request):
+    start = request.GET.get('start')
+    end = request.GET.get('end')
+    vehicle = request.GET.get('vehicle')
+
+    if not start or not end or not vehicle:
+        return JsonResponse({'error': 'Missing required parameters'}, status=400)
+
+    # Geocode start and end locations
+    start_coords = geocode_location(start)
+    end_coords = geocode_location(end)
+
+    if not start_coords or not end_coords:
+        return JsonResponse({'error': 'Could not geocode locations'}, status=400)
+
+    if vehicle == 'car':
+        route = get_car_route(start_coords['lat'], start_coords['lon'], end_coords['lat'], end_coords['lon'])
+    elif vehicle == 'metro':
+        route = get_combined_route(start_coords['lat'], start_coords['lon'], end_coords['lat'], end_coords['lon'])
+    else:
+        return JsonResponse({'error': 'Invalid vehicle type'}, status=400)
+
+    return JsonResponse(route)
 
 
 class RouteView(View):
@@ -29,13 +56,20 @@ class RouteView(View):
                 return JsonResponse({"error": f"Could not geocode end location: {end}"}, status=400)
                 
             # Get route data
-            route_data = get_graphhopper_route(
-                start_geocode['lat'],
-                start_geocode['lon'],
-                end_geocode['lat'],
-                end_geocode['lon'],
-                vehicle
-            )
+            if vehicle == 'metro':
+                route_data = get_combined_route(
+                    start_geocode['lat'],
+                    start_geocode['lon'],
+                    end_geocode['lat'],
+                    end_geocode['lon']
+                )
+            else:
+                route_data = get_car_route(
+                    start_geocode['lat'],
+                    start_geocode['lon'],
+                    end_geocode['lat'],
+                    end_geocode['lon']
+                )
             
             if 'error' in route_data:
                 return JsonResponse({"error": route_data['error']}, status=400)
