@@ -5,6 +5,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 GRAPH_HOPPER_API_KEY = 'dad56569-fcce-4ce5-8e3c-c49cc803d61a'  
 
+# settings.py
+INDIAN_RAIL_API_KEY = '63cbc7b5a9de511bffa67aea794dc5b7'
+
 SECRET_KEY = 'django-insecure-gf4s26gl7&c%mwpr2p*$^0awk-h34=0lb11p37%z&+e^=d2lax'
 
 DEBUG = True

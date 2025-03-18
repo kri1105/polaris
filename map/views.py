@@ -1,21 +1,21 @@
 from django.http import JsonResponse
 from django.views import View
 from django.views.decorators.http import require_GET
-from .services import geocode_location, get_combined_route, get_car_route
+from .services import geocode_location, get_multi_modal_route
 
 from django.shortcuts import render
 
 def map_view(request):
     return render(request, 'map.html')
 
-
 @require_GET
 def get_route(request):
     start = request.GET.get('start')
     end = request.GET.get('end')
-    vehicle = request.GET.get('vehicle')
+    start_station_name = request.GET.get('start_station')
+    end_station_name = request.GET.get('end_station')
 
-    if not start or not end or not vehicle:
+    if not start or not end or not start_station_name or not end_station_name:
         return JsonResponse({'error': 'Missing required parameters'}, status=400)
 
     # Geocode start and end locations
@@ -25,22 +25,20 @@ def get_route(request):
     if not start_coords or not end_coords:
         return JsonResponse({'error': 'Could not geocode locations'}, status=400)
 
-    if vehicle == 'car':
-        route = get_car_route(start_coords['lat'], start_coords['lon'], end_coords['lat'], end_coords['lon'])
-    elif vehicle == 'metro':
-        route = get_combined_route(start_coords['lat'], start_coords['lon'], end_coords['lat'], end_coords['lon'])
-    else:
-        return JsonResponse({'error': 'Invalid vehicle type'}, status=400)
+    # Get multi-modal route
+    route = get_multi_modal_route(
+        start_coords['lat'], start_coords['lon'],
+        end_coords['lat'], end_coords['lon'],
+        start_station_name, end_station_name
+    )
 
     return JsonResponse(route)
-
 
 class RouteView(View):
     def get(self, request):
         # Get parameters from request
         start = request.GET.get('start', '')
         end = request.GET.get('end', '')
-        vehicle = request.GET.get('vehicle', 'car')  # Default to car
         
         if not start or not end:
             return JsonResponse({"error": "Both start and end locations are required"}, status=400)
@@ -55,21 +53,13 @@ class RouteView(View):
             if not end_geocode:
                 return JsonResponse({"error": f"Could not geocode end location: {end}"}, status=400)
                 
-            # Get route data
-            if vehicle == 'metro':
-                route_data = get_combined_route(
-                    start_geocode['lat'],
-                    start_geocode['lon'],
-                    end_geocode['lat'],
-                    end_geocode['lon']
-                )
-            else:
-                route_data = get_car_route(
-                    start_geocode['lat'],
-                    start_geocode['lon'],
-                    end_geocode['lat'],
-                    end_geocode['lon']
-                )
+            # Get multi-modal route data
+            route_data = get_multi_modal_route(
+                start_geocode['lat'],
+                start_geocode['lon'],
+                end_geocode['lat'],
+                end_geocode['lon']
+            )
             
             if 'error' in route_data:
                 return JsonResponse({"error": route_data['error']}, status=400)

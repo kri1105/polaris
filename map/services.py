@@ -1,67 +1,11 @@
 import requests
 from django.conf import settings
 from math import radians, sin, cos, sqrt, atan2
-import json, os
-import psycopg2
 import logging
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
-
-# Load Chennai Metro data
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-METRO_DATA_PATH = os.path.join(BASE_DIR, 'map', 'data', 'chennai_metro.json')
-
-with open(METRO_DATA_PATH, 'r', encoding="utf-8") as f:
-    CHENNAI_METRO_DATA = json.load(f)
-
-# Extract metro stations
-METRO_STATIONS = [
-    {
-        "id": element['id'],
-        "name": element['tags'].get('name', 'Unnamed Station'),
-        "lat": element['lat'],
-        "lon": element['lon'],
-    }
-    for element in CHENNAI_METRO_DATA['elements']
-    if element['type'] == 'node' and 'railway' in element['tags']
-]
-
-# Connect to PostgreSQL
-def get_db_connection():
-    return psycopg2.connect(
-        dbname=settings.DATABASES['default']['NAME'],
-        user=settings.DATABASES['default']['USER'],
-        password=settings.DATABASES['default']['PASSWORD'],
-        host=settings.DATABASES['default']['HOST'],
-        port=settings.DATABASES['default']['PORT']
-    )
-
-# Store metro stations in PostgreSQL
-def store_metro_stations():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS metro_stations (
-            id BIGINT PRIMARY KEY,
-            name TEXT,
-            lat FLOAT,
-            lon FLOAT
-        )
-    """)
-    for station in METRO_STATIONS:
-        cur.execute("""
-            INSERT INTO metro_stations (id, name, lat, lon)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (id) DO NOTHING
-        """, (station['id'], station['name'], station['lat'], station['lon']))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-# Call the function to store metro stations
-store_metro_stations()
 
 def haversine(lat1, lon1, lat2, lon2):
     """
@@ -108,55 +52,6 @@ def geocode_location(location_name):
         logger.error(f"Error geocoding location '{location_name}': {e}")
         return {"error": str(e)}
 
-def find_nearest_metro_station(lat, lon):
-    """
-    Find the nearest metro station to the given coordinates.
-    """
-    nearest_station = None
-    min_distance = float('inf')
-    
-    for station in METRO_STATIONS:
-        distance = haversine(lat, lon, station['lat'], station['lon'])
-        if distance < min_distance:
-            min_distance = distance
-            nearest_station = station
-    
-    logger.debug(f"Nearest metro station to coordinates ({lat}, {lon}) is '{nearest_station['name']}' at distance {min_distance} km")
-    return nearest_station
-
-def get_metro_route(start_station_id, end_station_id):
-    """
-    Get the metro route between two stations.
-    """
-    # Find the start and end stations
-    start_station = next((station for station in METRO_STATIONS if station['id'] == start_station_id), None)
-    end_station = next((station for station in METRO_STATIONS if station['id'] == end_station_id), None)
-    
-    if not start_station or not end_station:
-        logger.error(f"Invalid metro station IDs: start_station_id={start_station_id}, end_station_id={end_station_id}")
-        return {"error": "Invalid metro station IDs"}
-    
-    # Calculate distance and time between stations
-    distance = haversine(start_station['lat'], start_station['lon'], end_station['lat'], end_station['lon'])
-    time = distance * 3  # Assuming 3 minutes per km for metro
-    
-    logger.debug(f"Metro route from '{start_station['name']}' to '{end_station['name']}' is {distance} km and will take {time} minutes")
-    return {
-        "start_address": start_station['name'],
-        "end_address": end_station['name'],
-        "distance": distance * 1000,  # Convert to meters
-        "time": time * 60,  # Convert to seconds
-        "instructions": [{"text": f"Take metro from {start_station['name']} to {end_station['name']}", "distance": distance * 1000}],
-        "paths": [{
-            "points": {
-                "coordinates": [
-                    [start_station['lon'], start_station['lat']],
-                    [end_station['lon'], end_station['lat']]
-                ]
-            }
-        }]
-    }
-
 def get_car_route(start_lat, start_lng, end_lat, end_lng):
     """
     Fetch optimal car route from Graphhopper Directions API.
@@ -188,7 +83,7 @@ def get_car_route(start_lat, start_lng, end_lat, end_lng):
         logger.debug(f"Car route from ({start_lat}, {start_lng}) to ({end_lat}, {end_lng}) is {route['distance']} meters and will take {route['time']} milliseconds")
         return {
             "distance": route['distance'],  # Distance in meters
-            "time": route['time'],  # Time in milliseconds
+            "time": route['time'] / 1000,  # Time in seconds (Graphhopper returns time in milliseconds)
             "instructions": route['instructions'],  # Turn-by-turn instructions
             "points": route['points'],  # Geometry of the route
             "paths": [{
@@ -203,40 +98,79 @@ def get_car_route(start_lat, start_lng, end_lat, end_lng):
         logger.error(f"Error fetching car route: {e}")
         return {"error": str(e)}
 
-def get_combined_route(start_lat, start_lng, end_lat, end_lng):
+def get_train_stations():
     """
-    Get combined car and metro route.
+    Fetch a list of train stations with their names, codes, and coordinates.
+    This can be replaced with an API call or a database query.
     """
-    # Find nearest metro stations
-    start_station = find_nearest_metro_station(start_lat, start_lng)
-    end_station = find_nearest_metro_station(end_lat, end_lng)
+    # Example static data (replace with actual API or database call)
+    stations = [
+        {"name": "Potheri", "code": "POI", "lat": 12.8236, "lon": 80.0444},
+        {"name": "Guindy", "code": "GY", "lat": 13.0067, "lon": 80.2206},
+        {"name": "Chennai Central", "code": "MAS", "lat": 13.0827, "lon": 80.2707},
+        # Add more stations as needed
+    ]
+    return stations
+
+def get_nearest_station(lat, lon, stations):
+    """
+    Find the nearest train station from a given latitude and longitude.
+    """
+    nearest_station = None
+    min_distance = float('inf')
+    
+    for station in stations:
+        station_lat = station['lat']
+        station_lon = station['lon']
+        distance = haversine(lat, lon, station_lat, station_lon)
+        if distance < min_distance:
+            min_distance = distance
+            nearest_station = station
+    
+    return nearest_station
+
+def get_multi_modal_route(start_lat, start_lng, end_lat, end_lng):
+    """
+    Get a multi-modal route combining car and train.
+    Automatically calculates the nearest stations for start and destination.
+    """
+    # Fetch train stations
+    stations = get_train_stations()
+    if not stations:
+        return {"error": "No train stations available"}
+    
+    # Find nearest stations to start and end points
+    start_station = get_nearest_station(start_lat, start_lng, stations)
+    end_station = get_nearest_station(end_lat, end_lng, stations)
     
     if not start_station or not end_station:
-        logger.error("Could not find metro stations near the start or end location")
-        return {"error": "Could not find metro stations near the start or end location"}
+        return {"error": "Could not find nearest stations"}
     
-    # Get route from start to metro station (car)
-    car_to_metro = get_car_route(start_lat, start_lng, start_station['lat'], start_station['lon'])
-    if 'error' in car_to_metro:
-        return car_to_metro
+    # Get car route from start location to nearest station
+    car_route_start = get_car_route(start_lat, start_lng, start_station['lat'], start_station['lon'])
+    if 'error' in car_route_start:
+        return car_route_start
     
-    # Get metro route between stations
-    metro_route = get_metro_route(start_station['id'], end_station['id'])
-    if 'error' in metro_route:
-        return metro_route
-    
-    # Get route from metro station to destination (car)
-    metro_to_dest = get_car_route(end_station['lat'], end_station['lon'], end_lat, end_lng)
-    if 'error' in metro_to_dest:
-        return metro_to_dest
+    # Get car route from end station to destination
+    car_route_end = get_car_route(end_station['lat'], end_station['lon'], end_lat, end_lng)
+    if 'error' in car_route_end:
+        return car_route_end
     
     # Combine routes
-    logger.debug(f"Combined route from start to destination via metro stations '{start_station['name']}' and '{end_station['name']}'")
-    return {
-        "start_address": f"Start to {start_station['name']} (Car)",
-        "end_address": f"{end_station['name']} to Destination (Car)",
-        "distance": car_to_metro['distance'] + metro_route['distance'] + metro_to_dest['distance'],
-        "time": car_to_metro['time'] + metro_route['time'] + metro_to_dest['time'],
-        "instructions": car_to_metro['instructions'] + metro_route['instructions'] + metro_to_dest['instructions'],
-        "paths": [car_to_metro['paths'][0], metro_route['paths'][0], metro_to_dest['paths'][0]],
+    combined_route = {
+        "start_address": f"Start: {start_lat}, {start_lng}",
+        "end_address": f"End: {end_lat}, {end_lng}",
+        "distance": car_route_start['distance'] + car_route_end['distance'],
+        "time": car_route_start['time'] + car_route_end['time'],
+        "instructions": [
+            *car_route_start['instructions'],
+            {"text": f"Take train from {start_station['name']} to {end_station['name']}"},
+            *car_route_end['instructions']
+        ],
+        "paths": [
+            *car_route_start['paths'],
+            *car_route_end['paths']
+        ]
     }
+    
+    return combined_route
